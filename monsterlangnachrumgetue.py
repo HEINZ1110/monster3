@@ -140,6 +140,7 @@ class ImageListWidget(QListWidget):
         self.setSpacing(10)
         self.setAcceptDrops(True)
         self.setDragEnabled(False)  # We'll handle moves with buttons
+        self.setSelectionMode(QListWidget.SelectionMode.MultiSelection)  # Enable multiple selection
         self.main_window = None  # Reference to main window
 
     def set_main_window(self, main_window):
@@ -661,6 +662,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.images: List[ImageItem] = []
         self.exported_images: List[ImageItem] = []
+        self.preview_list: List[ImageItem] = []  # Separate preview list for selected images
         self.categories = CategoryManager.load_categories()
         
         self.setWindowTitle("Photo Collection Manager")
@@ -705,10 +707,14 @@ class MainWindow(QMainWindow):
         delete_btn = QPushButton("Delete")
         delete_btn.clicked.connect(self.delete_selected)
         
+        add_to_preview_btn = QPushButton("Zur Vorschau hinzufügen")
+        add_to_preview_btn.clicked.connect(self.add_selected_to_preview)
+        
         list1_buttons.addWidget(add_btn)
         list1_buttons.addWidget(move_up_btn)
         list1_buttons.addWidget(move_down_btn)
         list1_buttons.addWidget(delete_btn)
+        list1_buttons.addWidget(add_to_preview_btn)
         
         list1_layout.addWidget(self.image_list)
         list1_layout.addLayout(list1_buttons)
@@ -755,7 +761,11 @@ class MainWindow(QMainWindow):
         open_preview_btn = QPushButton("Open Full Preview")
         open_preview_btn.clicked.connect(self.open_preview_dialog)
         
+        clear_preview_btn = QPushButton("Clear Preview")
+        clear_preview_btn.clicked.connect(self.clear_preview_list)
+        
         preview_buttons.addWidget(open_preview_btn)
+        preview_buttons.addWidget(clear_preview_btn)
         preview_buttons.addStretch()
         
         preview_layout.addWidget(self.preview_scroll)
@@ -1000,17 +1010,46 @@ class MainWindow(QMainWindow):
         indices = self.get_selected_image_indices()
         return [self.images[i] for i in indices]
     
+    def add_selected_to_preview(self):
+        """Add selected images to the preview list"""
+        selected_images = self.get_selected_images()
+        if not selected_images:
+            self.status_bar.showMessage("No images selected", 3000)
+            return
+        
+        added_count = 0
+        for image in selected_images:
+            if image not in self.preview_list:
+                self.preview_list.append(image)
+                added_count += 1
+        
+        if added_count > 0:
+            self.status_bar.showMessage(f"Added {added_count} images to preview", 3000)
+            self.update_preview()
+        else:
+            self.status_bar.showMessage("Selected images are already in preview", 3000)
+    
+    def clear_preview_list(self):
+        """Clear all images from the preview list"""
+        if not self.preview_list:
+            self.status_bar.showMessage("Preview list is already empty", 3000)
+            return
+        
+        self.preview_list.clear()
+        self.update_preview()
+        self.status_bar.showMessage("Preview list cleared", 3000)
+    
     def update_preview(self):
-        """Update the preview area with selected images"""
+        """Update the preview area with images from preview list"""
         # Clear previous previews
         while self.preview_layout.count():
             item = self.preview_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
         
-        selected_images = self.get_selected_images()
+        preview_images = self.preview_list
         
-        if not selected_images:
+        if not preview_images:
             # Clear detail fields
             self.filename_label.setText("")
             self.size_label.setText("")
@@ -1020,23 +1059,23 @@ class MainWindow(QMainWindow):
             self.condition_combo.setCurrentIndex(-1)
             return
         
-        # Determine thumbnail size based on number of selected images
-        if len(selected_images) <= 2:
+        # Determine thumbnail size based on number of preview images
+        if len(preview_images) <= 2:
             thumb_size = QSize(200, 200)
-        elif len(selected_images) <= 4:
+        elif len(preview_images) <= 4:
             thumb_size = QSize(150, 150)
         else:
             thumb_size = QSize(120, 120)
         
-        # Add preview for each selected image
-        for image in selected_images:
+        # Add preview for each image in preview list
+        for image in preview_images:
             thumb_label = QLabel()
             thumb_label.setPixmap(image.get_thumbnail(thumb_size))
             thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.preview_layout.addWidget(thumb_label)
         
-        # Update details for the first selected image
-        self.update_details(selected_images[0])
+        # Update details for the first preview image
+        self.update_details(preview_images[0])
     
     def update_details(self, image: ImageItem):
         """Update detail fields for the given image"""
@@ -1075,32 +1114,32 @@ class MainWindow(QMainWindow):
         self.condition_combo.blockSignals(False)
     
     def update_text(self):
-        """Update text field for selected images"""
-        selected_images = self.get_selected_images()
-        if not selected_images:
+        """Update text field for images in preview list"""
+        preview_images = self.preview_list
+        if not preview_images:
             return
             
         new_text = self.text_edit.text()
-        for image in selected_images:
+        for image in preview_images:
             image.text = new_text
     
     def update_comment(self):
-        """Update comment field for selected images"""
-        selected_images = self.get_selected_images()
-        if not selected_images:
+        """Update comment field for images in preview list"""
+        preview_images = self.preview_list
+        if not preview_images:
             return
             
         new_comment = self.comment_edit.toPlainText()
-        for image in selected_images:
+        for image in preview_images:
             image.comment = new_comment
     
     def update_condition(self, condition):
-        """Update condition field for selected images"""
-        selected_images = self.get_selected_images()
-        if not selected_images:
+        """Update condition field for images in preview list"""
+        preview_images = self.preview_list
+        if not preview_images:
             return
             
-        for image in selected_images:
+        for image in preview_images:
             image.condition = condition
     
     def reload_categories(self):
@@ -1151,12 +1190,12 @@ class MainWindow(QMainWindow):
             }
     
     def update_selected_categories(self):
-        """Update category widgets with selected image's categories"""
-        selected_images = self.get_selected_images()
-        if not selected_images:
+        """Update category widgets with preview image's categories"""
+        preview_images = self.preview_list
+        if not preview_images:
             return
             
-        image = selected_images[0]
+        image = preview_images[0]
         
         # Update each category list
         for group, widgets in self.category_widgets.items():
@@ -1172,12 +1211,12 @@ class MainWindow(QMainWindow):
         if not text:
             return
             
-        selected_images = self.get_selected_images()
-        if not selected_images:
+        preview_images = self.preview_list
+        if not preview_images:
             return
             
-        # Add to category for all selected images
-        for image in selected_images:
+        # Add to category for all preview images
+        for image in preview_images:
             if group not in image.categories:
                 image.categories[group] = []
                 
@@ -1204,8 +1243,8 @@ class MainWindow(QMainWindow):
         if action == remove_action:
             value = item.text()
             
-            selected_images = self.get_selected_images()
-            for image in selected_images:
+            preview_images = self.preview_list
+            for image in preview_images:
                 if group in image.categories and value in image.categories[group]:
                     image.categories[group].remove(value)
             
@@ -1223,19 +1262,19 @@ class MainWindow(QMainWindow):
         mode = self.scan_mode_combo.currentText()
     
         if mode == "Single":
-            selected = self.get_selected_images()
-            return [[image] for image in selected] if selected else []
+            preview_images = self.preview_list
+            return [[image] for image in preview_images] if preview_images else []
     
         elif mode == "Pair":
-            selected = self.get_selected_images()
-            pairs = [selected[i:i + 2] for i in range(0, len(selected), 2)]
+            preview_images = self.preview_list
+            pairs = [preview_images[i:i + 2] for i in range(0, len(preview_images), 2)]
             return pairs
 
         elif mode == "All":
             return [self.images.copy()]
     
         elif mode == "Selected Only":
-            return [self.get_selected_images()]
+            return [self.preview_list.copy()] if self.preview_list else []
     
         elif mode == "Interval Bunch":
             interval = self.interval_spin.value()
@@ -1491,16 +1530,16 @@ class MainWindow(QMainWindow):
             self.update_preview()
     
     def open_preview_dialog(self):
-        """Open dialog with full preview of selected images"""
-        selected_images = self.get_selected_images()
+        """Open dialog with full preview of images in preview list"""
+        preview_images = self.preview_list
         
-        if not selected_images:
+        if not preview_images:
             QMessageBox.information(
-                self, "Information", "Please select images to preview"
+                self, "Information", "No images in preview list. Please add images to preview first."
             )
             return
             
-        dialog = ImagePreviewDialog(selected_images, self)
+        dialog = ImagePreviewDialog(preview_images, self)
         dialog.exec()
     
     def open_category_manager(self):
