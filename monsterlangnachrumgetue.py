@@ -830,8 +830,8 @@ class MainWindow(QMainWindow):
         
         self.scan_mode_combo = QComboBox()
         self.scan_mode_combo.addItems([
-            "Single", "Pair", "All", "Selected Only", 
-            "Interval Bunch", "Interval Every Step"
+            "Single", "Pair", "All", 
+            "Group of X", "Alternate"
         ])
         self.scan_mode_combo.currentTextChanged.connect(self.scan_mode_changed)
         
@@ -1215,45 +1215,55 @@ class MainWindow(QMainWindow):
     def scan_mode_changed(self, mode):
         """Handle scan mode selection change"""
         # Show interval settings if interval mode selected
-        show_interval = mode in ["Interval Bunch", "Interval Every Step"]
+        show_interval = mode in ["Group of X", "Alternate"]
         self.interval_widget.setVisible(show_interval)
     
     def get_images_to_export(self) -> List[List[ImageItem]]:
         """Get images to export based on selected scan mode"""
         mode = self.scan_mode_combo.currentText()
+        
+        # Get the preview images (currently selected images)
+        preview_images = self.get_selected_images()
+        
+        # If no images are selected, fall back to all images for certain modes
+        if not preview_images:
+            if mode in ["All"]:
+                preview_images = self.images.copy()
+            else:
+                return []
     
         if mode == "Single":
-            selected = self.get_selected_images()
-            return [[image] for image in selected] if selected else []
+            # Export each image in the preview list as a separate entry
+            return [[image] for image in preview_images]
     
         elif mode == "Pair":
-            selected = self.get_selected_images()
-            pairs = [selected[i:i + 2] for i in range(0, len(selected), 2)]
+            # Export images in pairs (2 consecutive images per entry)
+            pairs = [preview_images[i:i + 2] for i in range(0, len(preview_images), 2)]
             return pairs
 
         elif mode == "All":
-            return [self.images.copy()]
+            # Export all preview images as one entry
+            return [preview_images]
     
-        elif mode == "Selected Only":
-            return [self.get_selected_images()]
-    
-        elif mode == "Interval Bunch":
+        elif mode == "Group of X":
+            # Export images in groups of X per entry (where X is the interval setting)
             interval = self.interval_spin.value()
-            bunches = [self.images[i:i + interval] for i in range(0, len(self.images), interval)]
-            return bunches
+            groups = [preview_images[i:i + interval] for i in range(0, len(preview_images), interval)]
+            return groups
     
-        elif mode == "Interval Every Step":
+        elif mode == "Alternate":
+            # Export images in alternating groups (taking every 2nd, 3rd, etc. image based on interval setting)
             interval = self.interval_spin.value()
-            selected_indices = self.get_selected_image_indices()
-            if not selected_indices:
-                return []
-
-            start_idx = min(selected_indices)
-            result = [[] for _ in range(interval)]
-
+            if interval <= 1:
+                return [preview_images]
+            
+            result = []
             for step in range(interval):
-                for i in range(start_idx + step, len(self.images), interval):
-                    result[step].append(self.images[i])
+                group = []
+                for i in range(step, len(preview_images), interval):
+                    group.append(preview_images[i])
+                if group:  # Only add non-empty groups
+                    result.append(group)
             return result
         
         return []
