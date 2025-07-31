@@ -690,7 +690,7 @@ class MainWindow(QMainWindow):
         # List widget
         self.image_list = ImageListWidget()
         self.image_list.set_main_window(self)  # Set reference to main window
-        self.image_list.itemSelectionChanged.connect(self.update_preview)
+        # Note: preview now shows preview_list, not selected images, so no need to connect selection changes
         
         # Buttons under list
         list1_buttons = QHBoxLayout()
@@ -749,6 +749,10 @@ class MainWindow(QMainWindow):
         preview_group = QGroupBox("Image Preview")
         preview_layout = QVBoxLayout()
         
+        # Preview status label
+        self.preview_status_label = QLabel("No images in preview")
+        self.preview_status_label.setStyleSheet("color: #666; font-style: italic;")
+        
         self.preview_scroll = QScrollArea()
         self.preview_scroll.setWidgetResizable(True)
         self.preview_content = QWidget()
@@ -768,6 +772,7 @@ class MainWindow(QMainWindow):
         preview_buttons.addWidget(clear_preview_btn)
         preview_buttons.addStretch()
         
+        preview_layout.addWidget(self.preview_status_label)
         preview_layout.addWidget(self.preview_scroll)
         preview_layout.addLayout(preview_buttons)
         preview_group.setLayout(preview_layout)
@@ -904,6 +909,9 @@ class MainWindow(QMainWindow):
         # Load categories
         self.reload_categories()
         self.update_category_widgets()
+        
+        # Initialize preview display
+        self.update_preview()
     
     def create_menus(self):
         """Create application menus"""
@@ -1049,7 +1057,9 @@ class MainWindow(QMainWindow):
         
         preview_images = self.preview_list
         
+        # Update status label
         if not preview_images:
+            self.preview_status_label.setText("No images in preview")
             # Clear detail fields
             self.filename_label.setText("")
             self.size_label.setText("")
@@ -1058,6 +1068,8 @@ class MainWindow(QMainWindow):
             self.comment_edit.setText("")
             self.condition_combo.setCurrentIndex(-1)
             return
+        else:
+            self.preview_status_label.setText(f"{len(preview_images)} image(s) in preview")
         
         # Determine thumbnail size based on number of preview images
         if len(preview_images) <= 2:
